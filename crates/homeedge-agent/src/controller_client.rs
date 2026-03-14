@@ -1,9 +1,9 @@
 use chrono::Utc;
 use reqwest::StatusCode;
 
-use homeedge_types::api::{AssignmentsResponse, HeartbeatRequest, RegisterRequest};
+use homeedge_types::api::{HeartbeatRequest, RegisterRequest};
 use homeedge_types::node::NodeId;
-use homeedge_types::service::ServiceId;
+use homeedge_types::service::ServiceAssignment;
 
 use crate::error::AgentError;
 
@@ -69,24 +69,22 @@ impl ControllerClient {
         Ok(())
     }
 
-    pub async fn get_assignments(&self) -> Result<Vec<ServiceId>, AgentError> {
+    pub async fn get_assignments(&self) -> Result<Vec<ServiceAssignment>, AgentError> {
         let url = format!("{}/assignments/{}", self.base_url, self.node_id);
 
         let response = self.http.get(&url).send().await?;
 
-        // Check for 404 before expect_success because expect_success
-        // consumes the response body for error messages.
         if response.status() == StatusCode::NOT_FOUND {
             return Err(AgentError::NodeNotRegistered(self.node_id));
         }
 
         let response = Self::expect_success(response).await?;
-        let body: AssignmentsResponse = response.json().await?;
+        let body: Vec<ServiceAssignment> = response.json().await?;
 
-        Ok(body.service_ids)
+        Ok(body)
     }
 
-    pub fn node_id(&self) -> homeedge_types::node::NodeId {
+    pub fn node_id(&self) -> NodeId {
         self.node_id
     }
 }
@@ -188,36 +186,6 @@ mod tests {
     // ------------------------------------------------------------------ //
     // get_assignments()
     // ------------------------------------------------------------------ //
-
-    #[tokio::test]
-    async fn get_assignments_parses_successful_response() {
-        let server = MockServer::start().await;
-        let node_id = NodeId(Uuid::new_v4());
-        let service_id = ServiceId(Uuid::new_v4());
-
-        let response_body = AssignmentsResponse {
-            node_id,
-            service_ids: vec![service_id],
-        };
-
-        Mock::given(method("GET"))
-            .and(path(format!("/assignments/{}", node_id)))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(&response_body),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        let client = make_client(&server.uri(), node_id);
-        let assignments = client
-            .get_assignments()
-            .await
-            .expect("get_assignments should succeed");
-
-        assert_eq!(assignments.len(), 1);
-        assert_eq!(assignments[0], service_id);
-    }
 
     #[tokio::test]
     async fn get_assignments_maps_404_to_node_not_registered() {

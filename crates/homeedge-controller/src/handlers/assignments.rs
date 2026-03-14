@@ -5,18 +5,120 @@ use axum::{
 
 use crate::app_state::AppState;
 use crate::error::AppError;
-use homeedge_types::api::AssignmentsResponse;
-use homeedge_types::node::NodeId;
+use homeedge_types::{ServiceAssignment, node::NodeId};
 
 pub async fn get_assignments(
     State(state): State<AppState>,
     Path(node_id): Path<NodeId>,
-) -> Result<Json<AssignmentsResponse>, AppError> {
+) -> Result<Json<Vec<ServiceAssignment>>, AppError> {
     let guard = state.inner.lock().await;
-    let service_ids = guard.assignments_for(node_id)?;
+    let assignments = guard.assignments_for(node_id)?;
+    Ok(Json(assignments))
+}
 
-    Ok(Json(AssignmentsResponse {
-        node_id,
-        service_ids,
-    }))
+
+#[cfg(test)]
+mod tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    use homeedge_types::{AssignmentsResponse, NodeId, NodeRecord, NodeStatus, ServiceAssignment, ServiceDefinition};
+
+    use crate::{app_state::{AppState, ControllerState}, router::build_router};
+
+    fn test_state() -> AppState {
+        AppState {
+            inner: Arc::new(Mutex::new(ControllerState::default())),
+        }
+    }
+
+    #[tokio::test]
+    async fn get_assignments_returns_empty_vec_for_existing_node_with_no_assignments() {
+        let node_id = NodeId::new();
+
+        let mut controller_state = ControllerState::default();
+        controller_state.nodes.insert(
+            node_id,
+            NodeRecord {
+                id: node_id,
+                status: NodeStatus::Healthy,
+                last_heartbeat: None,
+                capabilities: vec![],
+            },
+        );
+
+        let app = build_router(AppState {
+            inner: std::sync::Arc::new(tokio::sync::Mutex::new(controller_state)),
+        });
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/assignments/{node_id}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_assignments_returns_real_assignments_for_node() {
+        let node_id = NodeId::new();
+
+        let svc = ServiceDefinition::new("lighting", "v1");
+        let service_id = svc.id;
+
+        let mut controller_state = ControllerState::default();
+        controller_state.nodes.insert(
+            node_id,
+            NodeRecord {
+                id: node_id,
+                status: NodeStatus::Healthy,
+                last_heartbeat: None,
+                capabilities: vec![],
+            },
+        );
+        controller_state.services.insert(service_id, svc);
+        controller_state.assignments.insert(node_id, vec![service_id]);
+
+        let app = build_router(AppState {
+            inner: std::sync::Arc::new(tokio::sync::Mutex::new(controller_state)),
+        });
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/assignments/{node_id}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let result: Vec<ServiceAssignment> = serde_json::from_slice(&body).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].service_id, service_id);
+        assert_eq!(result[0].node_id, node_id);
+    }
+
+    #[tokio::test]
+    async fn get_assignments_returns_not_found_for_unknown_node() {
+        let app = build_router(test_state());
+
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/assignments/{}", NodeId::new()))
+            .body(Body::empty())
+            .unwrap();
+
+        let resp = app.oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
 }

@@ -1,15 +1,27 @@
+mod app_state;
 mod controller_client;
 mod error;
 mod loops;
 mod observability;
 mod runtime;
 
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
+
 use homeedge_types::NodeId;
-use crate::controller_client::ControllerClient;
+
+use crate::{
+    app_state::{AgentAppState, SharedAgentAppState},
+    controller_client::ControllerClient,
+    loops::{
+        assignment_poll::run_assignment_poll_loop,
+        heartbeat::run_heartbeat_loop,
+        registration::wait_until_registered,
+    },
+};
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
-
-use crate::loops::{assignment_poll::run_assignment_poll_loop, heartbeat::run_heartbeat_loop, registration::wait_until_registered};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,6 +34,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let node_id = NodeId::new();
 
+    let state: SharedAgentAppState =
+        Arc::new(Mutex::new(AgentAppState::new(node_id)));
+
     let client = ControllerClient::new(
         "http://127.0.0.1:8080",
         node_id,
@@ -32,16 +47,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let heartbeat_client = client.clone();
     let assignment_client = client.clone();
+    let assignment_state = state.clone();
 
     let heartbeat_task = tokio::spawn(async move {
         run_heartbeat_loop(heartbeat_client).await;
     });
 
     let assignment_task = tokio::spawn(async move {
-        run_assignment_poll_loop(assignment_client).await;
+        run_assignment_poll_loop(assignment_client, assignment_state).await;
     });
 
-    // TODO: handle task panics explicitly in a later sprint
     let _ = tokio::join!(heartbeat_task, assignment_task);
 
     Ok(())

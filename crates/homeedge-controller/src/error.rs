@@ -13,13 +13,16 @@ pub enum AppError {
     #[error("invalid request: {0}")]
     BadRequest(String),
 
+    #[error("conflict: {0}")]
+    Conflict(String),
+
     #[error("internal server error")]
     Internal,
 }
 
 #[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
+pub struct ErrorResponse {
+    pub error: String,
 }
 
 impl IntoResponse for AppError {
@@ -27,6 +30,7 @@ impl IntoResponse for AppError {
         let status = match self {
             AppError::NodeNotFound => StatusCode::NOT_FOUND,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
 

@@ -9,10 +9,10 @@ use uuid::Uuid;
 
 use homeedge_controller::app_state::AppState;
 use homeedge_controller::router::build_router;
-use homeedge_types::api::{
+use homeedge_types::{ServiceAssignment, api::{
     AssignmentsResponse, HeartbeatRequest, HeartbeatResponse, NodesResponse, RegisterRequest,
     RegisterResponse,
-};
+}};
 use homeedge_types::node::{NodeId, NodeStatus};
 
 fn node_id(n: u128) -> NodeId {
@@ -158,10 +158,9 @@ async fn get_assignments_for_registered_node_returns_empty_list() {
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let parsed: AssignmentsResponse = serde_json::from_slice(&body).unwrap();
+    let parsed: Vec<ServiceAssignment> = serde_json::from_slice(&body).unwrap();
 
-    assert_eq!(parsed.node_id, node_id(3));
-    assert!(parsed.service_ids.is_empty());
+    assert!(parsed.is_empty());
 }
 
 #[tokio::test]

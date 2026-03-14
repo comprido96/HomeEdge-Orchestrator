@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-use homeedge_types::{HeartbeatRequest, NodeStatus, RegisterRequest};
+use homeedge_types::{HeartbeatRequest, NodeStatus, RegisterRequest, ServiceAssignment, ServiceDefinition};
 use homeedge_types::node::{NodeId, NodeRecord};
 use homeedge_types::service::ServiceId;
 
@@ -13,7 +13,7 @@ use crate::error::AppError;
 #[derive(Debug, Default)]
 pub struct ControllerState {
     pub nodes: HashMap<NodeId, NodeRecord>,
-    pub services: HashMap<ServiceId, String>, // later: ServiceDefinition
+    pub services: HashMap<ServiceId, ServiceDefinition>, // later: ServiceDefinition
     pub assignments: HashMap<NodeId, Vec<ServiceId>>,
 }
 
@@ -44,20 +44,28 @@ impl ControllerState {
         Ok(node.clone())
     }
 
-    pub fn assignments_for(&self, node_id: NodeId) -> Result<Vec<ServiceId>, AppError> {
+    pub fn assignments_for(&self, node_id: NodeId) -> Result<Vec<ServiceAssignment>, AppError> {
         if !self.nodes.contains_key(&node_id) {
             return Err(AppError::NodeNotFound);
         }
 
-        Ok(self.assignments.get(&node_id).cloned().unwrap_or_default())
-    }
+        let assignments = self.assignments
+            .get(&node_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|service_id| self.services.contains_key(service_id))
+            .map(|service_id| ServiceAssignment { service_id, node_id })
+            .collect();
 
-    pub fn list_nodes(&self) -> Vec<NodeRecord> {
-        let mut nodes: Vec<_> = self.nodes.values().cloned().collect();
-        nodes.sort_by_key(|n| n.id.0);
-        nodes
+        Ok(assignments)
     }
-}
+        pub fn list_nodes(&self) -> Vec<NodeRecord> {
+            let mut nodes: Vec<_> = self.nodes.values().cloned().collect();
+            nodes.sort_by_key(|n| n.id.0);
+            nodes
+        }
+    }
 
 pub type SharedState = Arc<Mutex<ControllerState>>;
 
@@ -78,6 +86,7 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use homeedge_types::{ServiceAssignment, ServiceDefinition};
     use uuid::Uuid;
 
     use homeedge_types::api::{HeartbeatRequest, RegisterRequest};
@@ -239,9 +248,50 @@ mod tests {
         let s1 = service_id(100);
         let s2 = service_id(200);
 
+        state.services.insert(s1, ServiceDefinition::new("svc1", "v1"));
+        state.services.insert(s2, ServiceDefinition::new("svc2", "v1"));
         state.assignments.insert(id, vec![s1, s2]);
 
         let assignments = state.assignments_for(id).unwrap();
-        assert_eq!(assignments, vec![s1, s2]);
+        assert_eq!(
+            assignments,
+            vec![
+                ServiceAssignment {
+                    service_id: s1,
+                    node_id: id,
+                },
+                ServiceAssignment {
+                    service_id: s2,
+                    node_id: id,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn assignments_for_filters_out_stale_service_ids() {
+        let mut state = ControllerState::default();
+        let id = node_id(6);
+
+        state.register_node(RegisterRequest {
+            node_id: id,
+            capabilities: vec![],
+        });
+
+        let valid = service_id(100);
+        let stale = service_id(200);
+
+        state.services.insert(valid, ServiceDefinition::new("svc1", "v1"));
+        // stale is intentionally not inserted into services
+        state.assignments.insert(id, vec![valid, stale]);
+
+        let assignments = state.assignments_for(id).unwrap();
+        assert_eq!(
+            assignments,
+            vec![ServiceAssignment {
+                service_id: valid,
+                node_id: id,
+            }]
+        );
     }
 }
