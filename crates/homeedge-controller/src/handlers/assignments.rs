@@ -1,14 +1,22 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    Json,
 };
 
 use crate::app_state::AppState;
-use homeedge_types::NodeId;
+use crate::error::AppError;
+use homeedge_types::api::AssignmentsResponse;
+use homeedge_types::node::NodeId;
 
-pub async fn assignments(
-    State(_state): State<AppState>,
-    Path(_node_id): Path<NodeId>,
-) -> StatusCode {
-    StatusCode::OK
+pub async fn get_assignments(
+    State(state): State<AppState>,
+    Path(node_id): Path<NodeId>,
+) -> Result<Json<AssignmentsResponse>, AppError> {
+    let guard = state.inner.lock().await;
+    let service_ids = guard.assignments_for(node_id)?;
+
+    Ok(Json(AssignmentsResponse {
+        node_id,
+        service_ids,
+    }))
 }

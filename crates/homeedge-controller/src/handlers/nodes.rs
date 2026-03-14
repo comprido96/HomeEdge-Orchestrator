@@ -1,7 +1,14 @@
-use axum::{extract::State, http::StatusCode};
+use axum::{extract::State, Json};
 
 use crate::app_state::AppState;
+use crate::error::AppError;
+use homeedge_types::api::NodesResponse;
 
-pub async fn nodes(State(_state): State<AppState>) -> StatusCode {
-    StatusCode::OK
+pub async fn list_nodes(
+    State(state): State<AppState>,
+) -> Result<Json<NodesResponse>, AppError> {
+    let guard = state.inner.lock().await;
+    let nodes = guard.list_nodes();
+
+    Ok(Json(NodesResponse { nodes }))
 }

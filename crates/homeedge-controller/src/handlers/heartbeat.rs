@@ -1,11 +1,16 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, Json};
 
 use crate::app_state::AppState;
-use homeedge_types::HeartbeatRequest;
+use crate::error::AppError;
+use homeedge_types::api::{HeartbeatRequest, HeartbeatResponse};
+use homeedge_types::node::NodeStatus;
 
 pub async fn heartbeat(
-    State(_state): State<AppState>,
-    Json(_request): Json<HeartbeatRequest>,
-) -> StatusCode {
-    StatusCode::OK
+    State(state): State<AppState>,
+    Json(req): Json<HeartbeatRequest>,
+) -> Result<Json<HeartbeatResponse>, AppError> {
+    let mut guard = state.inner.lock().await;
+    let node = guard.record_heartbeat(req)?;
+
+    Ok(Json(HeartbeatResponse { node }))
 }

@@ -9,7 +9,7 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/register", post(handlers::register))
         .route("/heartbeat", post(handlers::heartbeat))
-        .route("/assignments/{node_id}", get(handlers::assignments))
-        .route("/nodes", get(handlers::nodes))
+        .route("/assignments/{node_id}", get(handlers::get_assignments))
+        .route("/nodes", get(handlers::list_nodes))
         .with_state(state)
 }
