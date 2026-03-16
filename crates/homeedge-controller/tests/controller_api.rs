@@ -214,6 +214,6 @@ async fn get_nodes_returns_registered_nodes() {
     let parsed: NodesResponse = serde_json::from_slice(&body).unwrap();
 
     assert_eq!(parsed.nodes.len(), 2);
-    assert_eq!(parsed.nodes[0].id, node_id(10));
-    assert_eq!(parsed.nodes[1].id, node_id(20));
+    assert_eq!(parsed.nodes[0].node.id, node_id(10));
+    assert_eq!(parsed.nodes[1].node.id, node_id(20));
 }

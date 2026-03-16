@@ -1,12 +1,9 @@
 use axum::{
-    extract::State,
-    http::StatusCode,
-    Json,
+    Json, extract::{Path, State}, http::StatusCode
 };
 
 use homeedge_types::{
-    api::{CreateServiceRequest, CreateServiceResponse, ListServicesResponse},
-    service::ServiceDefinition,
+    ServiceId, api::{CreateServiceRequest, CreateServiceResponse, ListServicesResponse, UpdateServiceRequest}, service::ServiceDefinition
 };
 
 use crate::{
@@ -66,6 +63,7 @@ pub async fn create_service(
     ))
 }
 
+
 pub async fn list_services(
     State(state): State<AppState>,
 ) -> Result<Json<ListServicesResponse>, AppError> {
@@ -83,6 +81,52 @@ pub async fn list_services(
 
     Ok(Json(ListServicesResponse { services }))
 }
+
+
+pub async fn get_service(
+    State(state): State<AppState>,
+    Path(service_id): Path<ServiceId>,
+) -> Result<Json<ServiceDefinition>, AppError> {
+
+    let guard = state.inner.lock().await;
+
+    let service = guard.get_service(service_id)?;
+
+    Ok(Json(service))
+}
+
+
+pub async fn delete_service(
+    State(state): State<AppState>,
+    Path(service_id): Path<ServiceId>,
+) -> Result<StatusCode, AppError> {
+
+    let mut guard = state.inner.lock().await;
+
+    guard.delete_service(service_id)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+
+pub async fn update_service(
+    State(state): State<AppState>,
+    Path(service_id): Path<ServiceId>,
+    Json(req): Json<UpdateServiceRequest>,
+) -> Result<Json<ServiceDefinition>, AppError> {
+
+    let mut guard = state.inner.lock().await;
+
+    let updated = guard.update_service(
+        service_id,
+        req.name.trim().to_string(),
+        req.version.trim().to_string(),
+        req.selector.map(|s| s.trim().to_string()),
+    )?;
+
+    Ok(Json(updated))
+}
+
 
 #[cfg(test)]
 mod tests {

@@ -18,6 +18,9 @@ pub enum AppError {
 
     #[error("internal server error")]
     Internal,
+
+    #[error("service not found")]
+    ServiceNotFound,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,6 +32,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let status = match self {
             AppError::NodeNotFound => StatusCode::NOT_FOUND,
+            AppError::ServiceNotFound => StatusCode::NOT_FOUND,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
             AppError::Conflict(_) => StatusCode::CONFLICT,
             AppError::Internal => StatusCode::INTERNAL_SERVER_ERROR,

@@ -4,8 +4,8 @@ pub mod nodes;
 pub mod register;
 pub mod services;
 
-pub use assignments::get_assignments;
+pub use assignments::{ get_assignments, list_assignments, assign_service, unassign_service };
 pub use heartbeat::heartbeat;
 pub use nodes::list_nodes;
 pub use register::register;
-pub use services::{ create_service, list_services };
+pub use services::{ create_service, list_services, get_service, delete_service, update_service };

@@ -1,11 +1,11 @@
 use axum::{
-    extract::{Path, State},
-    Json,
+    Json, extract::{Path, State}, http::StatusCode
 };
 
 use crate::app_state::AppState;
 use crate::error::AppError;
-use homeedge_types::{ServiceAssignment, node::NodeId};
+use homeedge_types::{ServiceAssignment, ServiceId, api::AssignServiceRequest, node::NodeId};
+
 
 pub async fn get_assignments(
     State(state): State<AppState>,
@@ -14,6 +14,54 @@ pub async fn get_assignments(
     let guard = state.inner.lock().await;
     let assignments = guard.assignments_for(node_id)?;
     Ok(Json(assignments))
+}
+
+
+pub async fn list_assignments(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ServiceAssignment>>, AppError> {
+
+    let guard = state.inner.lock().await;
+
+    Ok(Json(guard.list_assignments()))
+}
+
+
+pub async fn assign_service(
+    State(state): State<AppState>,
+    Path(service_id): Path<ServiceId>,
+    Json(req): Json<AssignServiceRequest>,
+) -> Result<Json<ServiceAssignment>, AppError> {
+
+    let mut guard = state.inner.lock().await;
+
+    let assignment = guard.assign_service(service_id, req.node_id)?;
+
+    Ok(Json(assignment))
+}
+
+
+pub async fn unassign_service(
+    State(state): State<AppState>,
+    Path(service_id): Path<ServiceId>,
+) -> Result<StatusCode, AppError> {
+
+    let mut guard = state.inner.lock().await;
+
+    guard.unassign_service(service_id)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+
+pub async fn get_assignments_for_node(
+    State(state): State<AppState>,
+    Path(node_id): Path<NodeId>,
+) -> Result<Json<Vec<ServiceAssignment>>, AppError> {
+
+    let guard = state.inner.lock().await;
+
+    Ok(Json(guard.assignments_for(node_id)?))
 }
 
 

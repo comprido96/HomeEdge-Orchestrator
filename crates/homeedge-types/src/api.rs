@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{NodeId, ServiceDefinition};
 use crate::node::{HeartbeatPayload, NodeRecord, RegistrationRequest};
-use crate::service::ServiceId;
+use crate::service::{ServiceHealthReport, ServiceId};
 
 pub type RegisterRequest = RegistrationRequest;
 pub type HeartbeatRequest = HeartbeatPayload;
@@ -18,8 +18,14 @@ pub struct AssignmentsResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeView {
+    pub node: NodeRecord,
+    pub services: Vec<ServiceHealthReport>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodesResponse {
-    pub nodes: Vec<NodeRecord>,
+    pub nodes: Vec<NodeView>,
 }
 
 
@@ -49,4 +55,18 @@ pub struct CreateServiceResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListServicesResponse {
     pub services: Vec<ServiceDefinition>,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssignServiceRequest {
+    pub node_id: NodeId,
+}
+
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateServiceRequest {
+    pub name: String,
+    pub version: String,
+    pub selector: Option<String>,
 }

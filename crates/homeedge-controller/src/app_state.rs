@@ -1,20 +1,33 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use homeedge_types::api::NodeView;
 use tokio::sync::Mutex;
 
-use homeedge_types::{HeartbeatRequest, NodeStatus, RegisterRequest, ServiceAssignment, ServiceDefinition};
+use homeedge_types::{HeartbeatRequest, NodeStatus, RegisterRequest, ServiceAssignment, ServiceDefinition, ServiceStatus};
 use homeedge_types::node::{NodeId, NodeRecord};
-use homeedge_types::service::ServiceId;
+use homeedge_types::service::{ServiceHealthReport, ServiceId};
 
 use crate::domain::node_registry::{on_heartbeat, on_register};
 use crate::error::AppError;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ControllerState {
     pub nodes: HashMap<NodeId, NodeRecord>,
     pub services: HashMap<ServiceId, ServiceDefinition>, // later: ServiceDefinition
     pub assignments: HashMap<NodeId, Vec<ServiceId>>,
+    pub observed: HashMap<NodeId, HashMap<ServiceId, ServiceStatus>>,
+}
+
+impl Default for ControllerState {
+    fn default() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            services: HashMap::new(),
+            assignments: HashMap::new(),
+            observed: HashMap::new(),
+        }
+    }
 }
 
 impl ControllerState {
@@ -41,6 +54,14 @@ impl ControllerState {
             .ok_or(AppError::NodeNotFound)?;
 
         on_heartbeat(node, req.timestamp);
+
+        let observed = req.service_statuses
+            .into_iter()
+            .map(|r| (r.service_id, r.status))
+            .collect();
+
+        self.observed.insert(req.node_id, observed);
+
         Ok(node.clone())
     }
 
@@ -60,12 +81,218 @@ impl ControllerState {
 
         Ok(assignments)
     }
-        pub fn list_nodes(&self) -> Vec<NodeRecord> {
-            let mut nodes: Vec<_> = self.nodes.values().cloned().collect();
-            nodes.sort_by_key(|n| n.id.0);
-            nodes
+
+    pub fn list_assignments(&self) -> Vec<ServiceAssignment> {
+        let mut result = Vec::new();
+
+        for (node_id, services) in &self.assignments {
+            for service_id in services {
+                if self.services.contains_key(service_id) {
+                    result.push(ServiceAssignment {
+                        service_id: *service_id,
+                        node_id: *node_id,
+                    });
+                }
+            }
         }
+
+        result.sort_by_key(|a| (a.node_id.0, a.service_id.0));
+
+        result
     }
+
+    pub fn list_nodes(&self) -> Vec<NodeRecord> {
+        let mut nodes: Vec<_> = self.nodes.values().cloned().collect();
+        nodes.sort_by_key(|n| n.id.0);
+        nodes
+    }
+
+    pub fn assign_service(
+        &mut self,
+        service_id: ServiceId,
+        node_id: NodeId,
+    ) -> Result<ServiceAssignment, AppError> {
+
+        if !self.services.contains_key(&service_id) {
+            return Err(AppError::ServiceNotFound);
+        }
+
+        if !self.nodes.contains_key(&node_id) {
+            return Err(AppError::NodeNotFound);
+        }
+
+        // remove from all nodes first
+        for services in self.assignments.values_mut() {
+            services.retain(|id| *id != service_id);
+        }
+
+        let node_services = self.assignments.entry(node_id).or_default();
+
+        if !node_services.contains(&service_id) {
+            node_services.push(service_id);
+        }
+
+        tracing::info!(
+            service_id = %service_id,
+            node_id = %node_id,
+            "service assigned"
+        );
+
+        Ok(ServiceAssignment {
+            service_id,
+            node_id,
+        })
+    }
+
+    pub fn unassign_service(
+        &mut self,
+        service_id: ServiceId,
+    ) -> Result<(), AppError> {
+
+        for services in self.assignments.values_mut() {
+            services.retain(|id| *id != service_id);
+        }
+
+        tracing::info!(
+            service_id = %service_id,
+            "service unassigned"
+        );
+
+        Ok(())
+    }
+
+    pub fn delete_service(
+        &mut self,
+        service_id: ServiceId,
+    ) -> Result<(), AppError> {
+
+        if !self.services.contains_key(&service_id) {
+            return Err(AppError::ServiceNotFound);
+        }
+
+        self.services.remove(&service_id);
+
+        // cleanup assignments
+        for services in self.assignments.values_mut() {
+            services.retain(|id| *id != service_id);
+        }
+
+        tracing::info!(
+            service_id = %service_id,
+            "service deleted"
+        );
+
+        Ok(())
+    }
+
+    pub fn get_service(
+        &self,
+        service_id: ServiceId,
+    ) -> Result<ServiceDefinition, AppError> {
+
+        self.services
+            .get(&service_id)
+            .cloned()
+            .ok_or(AppError::ServiceNotFound)
+    }
+
+    pub fn update_service(
+        &mut self,
+        service_id: ServiceId,
+        name: String,
+        version: String,
+        selector: Option<String>,
+    ) -> Result<ServiceDefinition, AppError> {
+
+        // Validate inputs first — no borrows yet
+        if name.trim().is_empty() {
+            return Err(AppError::BadRequest("name must not be empty".into()));
+        }
+
+        if version.trim().is_empty() {
+            return Err(AppError::BadRequest("version must not be empty".into()));
+        }
+
+        // Conflict check before mutable borrow
+        if self.services.values().any(|s|
+            s.id != service_id &&
+            s.name == name &&
+            s.version == version
+        ) {
+            return Err(AppError::Conflict(
+                format!("service '{}' version '{}' already exists", name, version)
+            ));
+        }
+
+        // Check existence before mutable borrow too
+        if !self.services.contains_key(&service_id) {
+            return Err(AppError::ServiceNotFound);
+        }
+
+        // Now take the mutable borrow — nothing else borrows `self.services` below
+        let service = self.services
+            .get_mut(&service_id)
+            .ok_or(AppError::ServiceNotFound)?;
+
+        service.name = name;
+        service.version = version;
+        service.selector = selector;
+
+        tracing::info!(
+            service_id = %service_id,
+            "service updated"
+        );
+
+        Ok(service.clone())
+    }
+
+    pub fn observed_services(
+        &self,
+        node_id: NodeId,
+    ) -> Vec<ServiceHealthReport> {
+
+        self.observed
+            .get(&node_id)
+            .map(|m|
+                m.iter()
+                .map(|(id,status)| ServiceHealthReport{
+                    service_id:*id,
+                    status:*status
+                })
+                .collect()
+            )
+            .unwrap_or_default()
+    }
+
+    pub fn list_node_views(&self) -> Vec<NodeView> {
+        let mut nodes: Vec<_> = self.nodes.values().cloned().collect();
+        nodes.sort_by_key(|n| n.id.0);
+
+        nodes.into_iter()
+            .map(|node| {
+                let mut services: Vec<ServiceHealthReport> = self.observed
+                    .get(&node.id)
+                    .map(|m| {
+                        let mut reports: Vec<ServiceHealthReport> = m.iter()
+                            .map(|(service_id, status)| ServiceHealthReport {
+                                service_id: *service_id,
+                                status: *status,
+                            })
+                            .collect();
+
+                        reports.sort_by_key(|r| r.service_id.0);
+                        reports
+                    })
+                    .unwrap_or_default();
+
+                NodeView {
+                    node,
+                    services,
+                }
+            })
+            .collect()
+    }
+}
 
 pub type SharedState = Arc<Mutex<ControllerState>>;
 
