@@ -1,14 +1,18 @@
 use chrono::Utc;
+use homeedge_types::{AssignmentsResponse, ListServicesResponse, ServiceDefinition, ServiceId, ServiceStatus};
 use reqwest::StatusCode;
 
 use homeedge_types::api::{HeartbeatRequest, RegisterRequest};
 use homeedge_types::node::NodeId;
-use homeedge_types::service::ServiceAssignment;
+use homeedge_types::service::{ServiceAssignment, ServiceHealthReport};
 
 use crate::error::AgentError;
 
-#[derive(Debug, Clone, Default)]
-pub struct HeartbeatPayload;
+#[derive(Debug, Clone)]
+pub struct HeartbeatPayload {
+    pub service_statuses: Vec<(ServiceId, ServiceStatus)>,
+}
+
 
 #[derive(Clone)]
 pub struct ControllerClient {
@@ -56,11 +60,14 @@ impl ControllerClient {
         Ok(())
     }
 
-    pub async fn heartbeat(&self, _status: HeartbeatPayload) -> Result<(), AgentError> {
+    pub async fn heartbeat(&self, status: HeartbeatPayload) -> Result<(), AgentError> {
         let req = HeartbeatRequest {
             node_id: self.node_id,
             timestamp: Utc::now(),
-            service_statuses: Vec::new(),
+            service_statuses: status.service_statuses
+                .into_iter()
+                .map(|(service_id, status)| ServiceHealthReport { service_id, status })
+                .collect(),
         };
 
         let url = format!("{}/heartbeat", self.base_url);
@@ -71,7 +78,6 @@ impl ControllerClient {
 
     pub async fn get_assignments(&self) -> Result<Vec<ServiceAssignment>, AgentError> {
         let url = format!("{}/assignments/{}", self.base_url, self.node_id);
-
         let response = self.http.get(&url).send().await?;
 
         if response.status() == StatusCode::NOT_FOUND {
@@ -83,9 +89,18 @@ impl ControllerClient {
 
         Ok(body)
     }
-
     pub fn node_id(&self) -> NodeId {
         self.node_id
+    }
+
+    pub async fn list_services(&self) -> Result<Vec<ServiceDefinition>, AgentError> {
+        let url = format!("{}/services", self.base_url);
+
+        let response = self.http.get(&url).send().await?;
+        let response = Self::expect_success(response).await?;
+        let body: ListServicesResponse = response.json().await?;
+
+        Ok(body.services)
     }
 }
 
@@ -155,7 +170,7 @@ mod tests {
 
         let client = make_client(&server.uri(), node_id);
         client
-            .heartbeat(HeartbeatPayload)
+            .heartbeat(HeartbeatPayload { service_statuses: vec![] })
             .await
             .expect("heartbeat should succeed");
 

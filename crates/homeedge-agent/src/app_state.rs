@@ -1,16 +1,18 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use tokio::sync::Mutex;
 
 use homeedge_types::{
-    node::NodeId,
-    service::ServiceAssignment,
+    ServiceDefinition, ServiceId, ServiceStatus, node::NodeId, service::ServiceAssignment
 };
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentAppState {
     pub node_id: NodeId,
     pub desired: Vec<ServiceAssignment>,
+    pub services: HashMap<ServiceId, ServiceDefinition>,
+    pub observed_statuses: HashMap<ServiceId, ServiceStatus>,
 }
 
 impl AgentAppState {
@@ -18,6 +20,8 @@ impl AgentAppState {
         Self {
             node_id,
             desired: Vec::new(),
+            services: HashMap::new(),
+            observed_statuses: HashMap::new(),
         }
     }
 }

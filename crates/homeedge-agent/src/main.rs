@@ -15,9 +15,7 @@ use crate::{
     app_state::{AgentAppState, SharedAgentAppState},
     controller_client::ControllerClient,
     loops::{
-        assignment_poll::run_assignment_poll_loop,
-        heartbeat::run_heartbeat_loop,
-        registration::wait_until_registered,
+        heartbeat::run_heartbeat_loop, reconcile::run_reconcile_loop, registration::wait_until_registered
     },
 };
 
@@ -46,18 +44,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wait_until_registered(&client).await;
 
     let heartbeat_client = client.clone();
-    let assignment_client = client.clone();
-    let assignment_state = state.clone();
-
+    let heartbeat_state = state.clone();
     let heartbeat_task = tokio::spawn(async move {
-        run_heartbeat_loop(heartbeat_client).await;
+        run_heartbeat_loop(heartbeat_client, heartbeat_state).await;
     });
 
-    let assignment_task = tokio::spawn(async move {
-        run_assignment_poll_loop(assignment_client, assignment_state).await;
+    let reconcile_client = client.clone();
+    let reconcile_state = state.clone();
+    let reconcile_task = tokio::spawn(async move {
+        run_reconcile_loop(reconcile_client, reconcile_state).await;
     });
 
-    let _ = tokio::join!(heartbeat_task, assignment_task);
+    let _ = tokio::join!(heartbeat_task, reconcile_task);
 
     Ok(())
 }
