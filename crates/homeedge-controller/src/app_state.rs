@@ -521,4 +521,63 @@ mod tests {
             }]
         );
     }
+
+    #[test]
+    fn record_heartbeat_updates_timestamp_on_previously_offline_node_with_stale_time() {
+        let mut state = ControllerState::default();
+        let id = node_id(43);
+
+        state.register_node(RegisterRequest {
+            node_id: id,
+            capabilities: vec![],
+        });
+
+        let stale_ts = Utc::now() - chrono::Duration::seconds(120);
+        {
+            let node = state.nodes.get_mut(&id).unwrap();
+            node.status = NodeStatus::Offline;
+            node.last_heartbeat = Some(stale_ts);
+        }
+
+        let fresh_ts = Utc::now();
+        let node = state.record_heartbeat(HeartbeatRequest {
+            node_id: id,
+            timestamp: fresh_ts,
+            service_statuses: vec![],
+        }).unwrap();
+
+        assert_eq!(node.status, NodeStatus::Healthy);
+        assert_eq!(node.last_heartbeat, Some(fresh_ts));
+        assert_ne!(node.last_heartbeat, Some(stale_ts));
+    }
+
+    #[test]
+    fn record_heartbeat_recovers_offline_node_and_updates_timestamp() {
+        let mut state = ControllerState::default();
+        let id = node_id(42);
+
+        state.register_node(RegisterRequest {
+            node_id: id,
+            capabilities: vec!["docker".into()],
+        });
+
+        {
+            let node = state.nodes.get_mut(&id).unwrap();
+            node.status = NodeStatus::Offline;
+            node.last_heartbeat = None;
+        }
+
+        let ts = Utc::now();
+
+        let node = state
+            .record_heartbeat(HeartbeatRequest {
+                node_id: id,
+                timestamp: ts,
+                service_statuses: vec![],
+            })
+            .unwrap();
+
+        assert_eq!(node.status, NodeStatus::Healthy);
+        assert_eq!(node.last_heartbeat, Some(ts));
+    }
 }

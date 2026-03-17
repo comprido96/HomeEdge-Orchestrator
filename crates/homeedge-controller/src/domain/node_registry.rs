@@ -18,8 +18,19 @@ pub fn on_register(existing: Option<&NodeRecord>, incoming: NodeRecord) -> NodeR
 }
 
 pub fn on_heartbeat(node: &mut NodeRecord, timestamp: DateTime<Utc>) {
+    let previous_status = node.status;
+
     node.last_heartbeat = Some(timestamp);
     node.status = NodeStatus::Healthy;
+
+    if previous_status != NodeStatus::Healthy {
+        tracing::info!(
+            node_id = %node.id,
+            from = ?previous_status,
+            to = ?NodeStatus::Healthy,
+            "node status changed"
+        );
+    }
 }
 
 pub fn mark_offline(node: &mut NodeRecord) {
@@ -31,7 +42,9 @@ pub fn mark_offline(node: &mut NodeRecord) {
 mod tests {
     use chrono::Utc;
     use uuid::Uuid;
-    use homeedge_types::node::{NodeId, NodeRecord, NodeStatus};
+    use homeedge_types::{HeartbeatRequest, RegisterRequest, node::{NodeId, NodeRecord, NodeStatus}};
+
+    use crate::app_state::ControllerState;
 
     use super::*;
 
@@ -108,5 +121,17 @@ mod tests {
         mark_offline(&mut node);
 
         assert_eq!(node.status, NodeStatus::Offline);
+    }
+
+    #[test]
+    fn on_heartbeat_does_not_change_status_of_already_healthy_node() {
+        let ts = Utc::now();
+        let mut node = sample_node(NodeStatus::Healthy);
+        node.last_heartbeat = Some(ts - chrono::Duration::seconds(5));
+
+        on_heartbeat(&mut node, ts);
+
+        assert_eq!(node.status, NodeStatus::Healthy);
+        assert_eq!(node.last_heartbeat, Some(ts));
     }
 }

@@ -7,8 +7,9 @@ mod observability;
 mod repository;
 mod router;
 
-use crate::{app_state::AppState, config::Config, router::build_router};
+use homeedge_controller::{app_state::AppState, config::Config, router::build_router};
 use std::net::SocketAddr;
+use homeedge_controller::background::stale_node_watcher::run_stale_node_watcher;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -20,6 +21,16 @@ async fn main() {
 
     let config = Config::default();
     let state = AppState::new();
+
+    let watcher_state = state.clone();
+    tokio::spawn(async move {
+        run_stale_node_watcher(
+            watcher_state,
+            config.stale_node_timeout,
+            config.reassignment_interval,
+        )
+        .await;
+    });
 
     let app = build_router(state);
 
