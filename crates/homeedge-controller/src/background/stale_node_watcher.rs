@@ -3,7 +3,7 @@ use std::{collections::HashMap, time::Duration};
 use chrono::{DateTime, Utc};
 use tokio::time::{interval, MissedTickBehavior};
 
-use crate::app_state::AppState;
+use crate::{app_state::AppState, background::reassignment_loop::reassign_from_offline_nodes};
 use homeedge_types::{NodeId, NodeRecord, NodeStatus};
 
 
@@ -11,7 +11,9 @@ fn mark_stale_nodes(
     nodes: &mut HashMap<NodeId, NodeRecord>,
     now: DateTime<Utc>,
     heartbeat_timeout: Duration,
-) {
+) -> bool {
+    let mut any_new_offline = false;
+
     for node in nodes.values_mut() {
         let is_stale = match node.last_heartbeat {
             Some(last_heartbeat) => {
@@ -28,6 +30,7 @@ fn mark_stale_nodes(
         if is_stale && node.status != NodeStatus::Offline {
             let previous_status = node.status;
             node.status = NodeStatus::Offline;
+            any_new_offline = true;
 
             tracing::warn!(
                 node_id = %node.id,
@@ -37,6 +40,8 @@ fn mark_stale_nodes(
             );
         }
     }
+
+    any_new_offline
 }
 
 
@@ -54,7 +59,11 @@ pub async fn run_stale_node_watcher(
         let now = Utc::now();
         let mut guard = state.inner.lock().await;
 
-        mark_stale_nodes(&mut guard.nodes, now, heartbeat_timeout);
+        let any_new_offline = mark_stale_nodes(&mut guard.nodes, now, heartbeat_timeout);
+
+        if any_new_offline {
+            let _unscheduled = reassign_from_offline_nodes(&mut guard);
+        }
     }
 }
 

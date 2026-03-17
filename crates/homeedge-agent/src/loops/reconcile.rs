@@ -373,4 +373,70 @@ mod tests {
             "reconcile should publish Running status for started service"
         );
     }
+
+    #[tokio::test]
+    async fn reconcile_stops_service_when_assignment_is_removed() {
+        let server = MockServer::start().await;
+        let node_id = make_node_id();
+        let svc = make_service();
+        let svc_id = svc.id;
+
+        let client = make_client(&server.uri(), node_id);
+        let state = make_state(node_id);
+        let mut manager = ServiceManager::new();
+
+        // Service is currently running locally
+        manager.start(&svc).await.unwrap();
+        assert_eq!(manager.len(), 1);
+
+        // Controller no longer returns this service in assignments
+        mount_assignments(&server, node_id, vec![]).await;
+        mount_services(&server, vec![]).await;
+
+        reconcile_once(&client, &state, &mut manager).await.unwrap();
+
+        // Service should have been stopped
+        assert!(manager.is_empty());
+        assert_eq!(
+            manager.status(&svc_id),
+            None,
+            "service should no longer be tracked after assignment removal"
+        );
+    }
+
+    #[tokio::test]
+    async fn reconcile_starts_service_when_assignment_is_added() {
+        let server = MockServer::start().await;
+        let node_id = make_node_id();
+        let svc = make_service();
+        let svc_id = svc.id;
+
+        // Service is not running locally — manager is empty
+        let client = make_client(&server.uri(), node_id);
+        let state = make_state(node_id);
+        let mut manager = ServiceManager::new();
+        assert!(manager.is_empty());
+
+        // Controller now returns this service in assignments for this node
+        // (simulates reassignment from a failed node)
+        mount_assignments(
+            &server,
+            node_id,
+            vec![ServiceAssignment { service_id: svc_id, node_id }],
+        )
+        .await;
+        mount_services(&server, vec![svc]).await;
+
+        reconcile_once(&client, &state, &mut manager).await.unwrap();
+
+        // Service should now be running
+        assert_eq!(manager.len(), 1);
+        assert_eq!(
+            manager.status(&svc_id),
+            Some(ServiceStatus::Running),
+            "reassigned service should be started by next reconcile tick"
+        );
+
+        manager.stop_all().await;
+    }
 }

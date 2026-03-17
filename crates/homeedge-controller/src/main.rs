@@ -26,8 +26,8 @@ async fn main() {
     tokio::spawn(async move {
         run_stale_node_watcher(
             watcher_state,
-            config.stale_node_timeout,
             config.reassignment_interval,
+            config.stale_node_timeout,
         )
         .await;
     });
