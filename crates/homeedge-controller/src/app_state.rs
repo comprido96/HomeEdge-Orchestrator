@@ -44,6 +44,11 @@ impl ControllerState {
         self.assignments.entry(updated.id).or_default();
         self.nodes.insert(updated.id, updated.clone());
 
+        tracing::info!(
+            node_id = %updated.id,
+            capabilities = ?updated.capabilities,
+            "node registered"
+        );
         updated
     }
 

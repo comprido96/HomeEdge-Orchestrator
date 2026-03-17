@@ -37,6 +37,13 @@ pub async fn assign_service(
 
     let assignment = guard.assign_service(service_id, req.node_id)?;
 
+    tracing::info!(
+        node_id = %req.node_id,
+        service_id = %service_id,
+        action = "assigned",
+        "assignment updated"
+    );
+
     Ok(Json(assignment))
 }
 
@@ -49,6 +56,12 @@ pub async fn unassign_service(
     let mut guard = state.inner.lock().await;
 
     guard.unassign_service(service_id)?;
+
+    tracing::info!(
+        service_id = %service_id,
+        action = "unassigned",
+        "assignment updated"
+    );
 
     Ok(StatusCode::NO_CONTENT)
 }

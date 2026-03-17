@@ -1,0 +1,47 @@
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8080:8080"
+    environment:
+      RUST_LOG: info
+      BIND_ADDR: 0.0.0.0:8080
+
+  agent-1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      RUST_LOG: info
+      CONTROLLER_URL: http://controller:8080
+      NODE_ID: 00000000-0000-0000-0000-000000000001
+    depends_on:
+      - controller
+
+  agent-2:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      RUST_LOG: info
+      CONTROLLER_URL: http://controller:8080
+      NODE_ID: 00000000-0000-0000-0000-000000000002
+    depends_on:
+      - controller
+
+  agent-3:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    environment:
+      RUST_LOG: info
+      CONTROLLER_URL: http://controller:8080
+      NODE_ID: 00000000-0000-0000-0000-000000000003
+    depends_on:
+      - controller

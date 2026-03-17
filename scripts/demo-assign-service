@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+API=http://127.0.0.1:8080
+
+curl -s -X POST "$API/services" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"lighting","version":"v2","selector":null}' | jq

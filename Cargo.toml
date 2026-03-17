@@ -1,5 +1,5 @@
 [workspace]
-resolver = "3"
+resolver = "2"
 
 members = [
     "crates/homeedge-types",
@@ -10,10 +10,10 @@ members = [
 ]
 
 [workspace.package]
-edition = "2024"
+edition = "2021"
 version = "0.1.0"
 license = "MIT"
-authors = ["HomeEdge"]
+authors = ["Dymora"]
 
 [workspace.dependencies]
 

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+# Remove containers, networks, anonymous volumes, and local demo DB files.
+docker compose down -v --remove-orphans
+# Remove local SQLite DB files from repo root (update path if DB location changes)
+rm -f ./*.db

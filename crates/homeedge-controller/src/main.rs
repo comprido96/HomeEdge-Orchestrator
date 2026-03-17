@@ -19,7 +19,7 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = Config::default();
+    let config = Config::from_env();
     let state = AppState::new();
 
     let watcher_state = state.clone();
