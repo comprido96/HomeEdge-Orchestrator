@@ -1,9 +1,7 @@
 use axum::{
     Json, extract::{Path, State}, http::StatusCode
 };
-
-use crate::app_state::AppState;
-use crate::error::AppError;
+use crate::{app_state::AppState, error::AppError};
 use homeedge_types::{ServiceAssignment, ServiceId, api::AssignServiceRequest, node::NodeId};
 
 

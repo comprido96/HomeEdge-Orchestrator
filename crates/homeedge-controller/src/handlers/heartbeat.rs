@@ -1,9 +1,7 @@
 use axum::{extract::State, Json};
-
-use crate::app_state::AppState;
-use crate::error::AppError;
+use crate::{app_state::AppState, error::AppError};
 use homeedge_types::api::{HeartbeatRequest, HeartbeatResponse};
-use homeedge_types::node::NodeStatus;
+
 
 pub async fn heartbeat(
     State(state): State<AppState>,

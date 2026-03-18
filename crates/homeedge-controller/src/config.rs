@@ -1,6 +1,19 @@
 use std::env;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
+use thiserror::Error;
+
+
+#[derive(Debug, Error)]
+pub enum ConfigError {
+    #[error("invalid BIND_ADDR '{value}': {source}")]
+    InvalidBindAddr {
+        value: String,
+        #[source]
+        source: std::net::AddrParseError,
+    },
+}
+
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -11,17 +24,22 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn from_env() -> Self {
-        let bind_addr = env::var("BIND_ADDR")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or_else(|| "0.0.0.0:8080".parse().unwrap());
+    pub fn from_env() -> Result<Self, ConfigError> {
+        let bind_addr_raw =
+            env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
 
-        Self {
+        let bind_addr = bind_addr_raw
+            .parse()
+            .map_err(|source| ConfigError::InvalidBindAddr {
+                value: bind_addr_raw,
+                source,
+            })?;
+
+        Ok(Self {
             bind_addr,
             stale_node_timeout: Duration::from_secs(30),
             reassignment_interval: Duration::from_secs(5),
-        }
+        })
     }
 }
 

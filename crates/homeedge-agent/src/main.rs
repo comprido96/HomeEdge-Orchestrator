@@ -11,9 +11,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::{
-    app_state::{AgentAppState, SharedAgentAppState}, config::Config, controller_client::ControllerClient, loops::{
-        heartbeat::run_heartbeat_loop, reconcile::run_reconcile_loop, registration::wait_until_registered
-    }
+    app_state::{AgentAppState, SharedAgentAppState},
+    config::Config,
+    controller_client::ControllerClient,
+    loops::{
+        heartbeat::run_heartbeat_loop,
+        reconcile::run_reconcile_loop,
+        registration::wait_until_registered,
+    },
 };
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -25,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = Config::from_env();
+    let config = Config::from_env()?;
 
     tracing::info!(
         node_id = %config.node_id,

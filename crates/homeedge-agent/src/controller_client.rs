@@ -37,15 +37,25 @@ impl ControllerClient {
     }
 
     async fn expect_success(
+        operation: &'static str,
         response: reqwest::Response,
     ) -> Result<reqwest::Response, AgentError> {
         if response.status().is_success() {
-            Ok(response)
-        } else {
-            let status = response.status();
-            let message = response.text().await.unwrap_or_default();
-            Err(AgentError::ControllerApi { status, message })
+            return Ok(response);
         }
+
+        let status = response.status();
+        let message = match response.text().await {
+            Ok(body) if !body.is_empty() => body,
+            Ok(_) => "<empty body>".to_string(),
+            Err(err) => format!("<failed to read error body: {err}>"),
+        };
+
+        Err(AgentError::ControllerApi {
+            operation,
+            status,
+            message,
+        })
     }
 
     pub async fn register(&self) -> Result<(), AgentError> {
@@ -55,8 +65,19 @@ impl ControllerClient {
         };
 
         let url = format!("{}/register", self.base_url);
-        let response = self.http.post(&url).json(&req).send().await?;
-        Self::expect_success(response).await?;
+
+        let response = self.http
+            .post(&url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|source| AgentError::Http {
+                operation: "register",
+                source,
+            })?;
+
+        let response = Self::expect_success("register", response).await?;
+
         Ok(())
     }
 
@@ -71,21 +92,42 @@ impl ControllerClient {
         };
 
         let url = format!("{}/heartbeat", self.base_url);
-        let response = self.http.post(&url).json(&req).send().await?;
-        Self::expect_success(response).await?;
+
+        let response = self.http
+            .post(&url)
+            .json(&req)
+            .send()
+            .await
+            .map_err(|source| AgentError::Http {
+                operation: "heartbeat",
+                source,
+            })?;
+
+        let response = Self::expect_success("heartbeat", response).await?;
+
         Ok(())
     }
 
     pub async fn get_assignments(&self) -> Result<Vec<ServiceAssignment>, AgentError> {
         let url = format!("{}/assignments/{}", self.base_url, self.node_id);
-        let response = self.http.get(&url).send().await?;
+        let response = self.http
+        .get(&url)
+        .send()
+        .await
+        .map_err(|source| AgentError::Http {
+            operation: "get_assignments",
+            source,
+        })?;
 
         if response.status() == StatusCode::NOT_FOUND {
             return Err(AgentError::NodeNotRegistered(self.node_id));
         }
 
-        let response = Self::expect_success(response).await?;
-        let body: Vec<ServiceAssignment> = response.json().await?;
+        let response = Self::expect_success("get_assignments", response).await?;
+        let body: Vec<ServiceAssignment> = response.json().await.map_err(|source| AgentError::Http {
+            operation: "get_assignments",
+            source,
+        })?;
 
         Ok(body)
     }
@@ -96,9 +138,21 @@ impl ControllerClient {
     pub async fn list_services(&self) -> Result<Vec<ServiceDefinition>, AgentError> {
         let url = format!("{}/services", self.base_url);
 
-        let response = self.http.get(&url).send().await?;
-        let response = Self::expect_success(response).await?;
-        let body: ListServicesResponse = response.json().await?;
+        let response = self.http
+        .get(&url)
+        .send().await
+        .map_err(|source| AgentError::Http {
+            operation: "list_services",
+            source,
+        })?;
+        let response = Self::expect_success("list_services", response).await?;
+        let body: ListServicesResponse = response
+        .json()
+        .await
+        .map_err(|source| AgentError::Http {
+            operation: "list_services",
+            source,
+        })?;
 
         Ok(body.services)
     }

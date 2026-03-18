@@ -76,19 +76,30 @@ pub async fn reconcile_once(
 
     for service_id in to_start {
         let Some(definition) = services_by_id.get(&service_id) else {
-            tracing::warn!(
-                node_id = %client.node_id(),
-                service_id = %service_id,
-                "assigned service missing definition; skipping start"
-            );
+            tracing::warn!(node_id = %client.node_id(), service_id = %service_id,
+                "assigned service missing definition; skipping start");
             continue;
         };
 
-        manager.start(definition).await?;
+        if let Err(err) = manager.start(definition).await {
+            tracing::error!(
+                node_id = %client.node_id(),
+                service_id = %service_id,
+                error = %err,
+                "failed to start service during reconciliation"
+            );
+        }
     }
 
     for service_id in to_stop {
-        manager.stop(&service_id).await?;
+        if let Err(err) = manager.stop(&service_id).await {
+            tracing::error!(
+                node_id = %client.node_id(),
+                service_id = %service_id,
+                error = %err,
+                "failed to stop service during reconciliation"
+            );
+        }
     }
 
     let observed_statuses = manager.snapshot_statuses();

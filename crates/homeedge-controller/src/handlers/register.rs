@@ -1,9 +1,7 @@
 use axum::{extract::State, Json};
-
-use crate::app_state::AppState;
-use crate::error::AppError;
+use crate::{app_state::AppState, error::AppError};
 use homeedge_types::api::{RegisterRequest, RegisterResponse};
-use homeedge_types::node::{NodeRecord, NodeStatus};
+
 
 pub async fn register(
     State(state): State<AppState>,

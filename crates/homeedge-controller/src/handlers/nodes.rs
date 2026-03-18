@@ -1,7 +1,5 @@
 use axum::{extract::State, Json};
-
-use crate::app_state::AppState;
-use crate::error::AppError;
+use crate::{app_state::AppState, error::AppError};
 use homeedge_types::api::NodesResponse;
 
 
