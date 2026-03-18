@@ -4,4 +4,5 @@ pub mod config;
 pub mod domain;
 pub mod error;
 pub mod handlers;
+pub mod observability;
 pub mod router;

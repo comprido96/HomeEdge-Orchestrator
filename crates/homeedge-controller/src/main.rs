@@ -7,18 +7,14 @@ mod observability;
 mod repository;
 mod router;
 
-use homeedge_controller::{app_state::AppState, background::stale_node_watcher::run_stale_node_watcher, config::Config, router::build_router};
+use homeedge_controller::{app_state::AppState, background::stale_node_watcher::run_stale_node_watcher, config::Config, observability::tracing::init_tracing, router::build_router};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
-    tracing_subscriber::registry()
-        .with(EnvFilter::try_new(&config.log_level)
-            .unwrap_or_else(|_| EnvFilter::new("info")))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    init_tracing(&config.log_level, &config.log_format);
 
     let state = AppState::new();
 

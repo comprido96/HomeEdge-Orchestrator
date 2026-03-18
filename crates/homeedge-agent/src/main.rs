@@ -19,6 +19,7 @@ use crate::{
         reconcile::run_reconcile_loop,
         registration::wait_until_registered,
     },
+    observability::tracing::init_tracing,
 };
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -26,14 +27,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
-
-    tracing_subscriber::registry()
-        .with(
-            EnvFilter::try_new(&config.log_level)
-                .unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    init_tracing(&config.log_level, &config.log_format);
 
     tracing::info!(
         node_id = %config.node_id,

@@ -35,6 +35,7 @@ pub struct Config {
     pub heartbeat_timeout: Duration,
     pub poll_interval: Duration,
     pub log_level: String,
+    pub log_format: String,
 }
 
 impl Config {
@@ -70,12 +71,14 @@ impl Config {
         };
 
         let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+        let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
 
         Ok(Self {
             bind_address,
             heartbeat_timeout: Duration::from_secs(heartbeat_timeout_secs),
             poll_interval: Duration::from_secs(poll_interval_secs),
             log_level,
+            log_format,
         })
     }
 }
@@ -87,6 +90,7 @@ impl Default for Config {
             heartbeat_timeout: Duration::from_secs(30),
             poll_interval: Duration::from_secs(5),
             log_level: "info".to_string(),
+            log_format: "pretty".to_string(),
         }
     }
 }

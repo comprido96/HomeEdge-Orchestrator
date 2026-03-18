@@ -27,6 +27,7 @@ pub struct Config {
     pub node_id: NodeId,
     pub poll_interval_secs: u64,
     pub log_level: String,
+    pub log_format: String,
 }
 
 impl Config {
@@ -61,12 +62,14 @@ impl Config {
         };
 
         let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+        let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
 
         Ok(Self {
             controller_url,
             node_id,
             poll_interval_secs,
             log_level,
+            log_format,
         })
     }
 }
