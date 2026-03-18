@@ -13,8 +13,8 @@ pub enum ConfigError {
         source: uuid::Error,
     },
 
-    #[error("invalid HEARTBEAT_INTERVAL '{value}': {source}")]
-    InvalidHeartbeatInterval {
+    #[error("invalid POLL_INTERVAL_SECS '{value}': {source}")]
+    InvalidPollIntervalSecs {
         value: String,
         #[source]
         source: std::num::ParseIntError,
@@ -25,14 +25,14 @@ pub enum ConfigError {
 pub struct Config {
     pub controller_url: String,
     pub node_id: NodeId,
-    pub heartbeat_interval_secs: u64,
+    pub poll_interval_secs: u64,
+    pub log_level: String,
 }
 
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
         let controller_url =
-            env::var("CONTROLLER_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+            env::var("CONTROLLER_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
 
         let node_id = match env::var("NODE_ID") {
             Ok(raw) => {
@@ -50,20 +50,23 @@ impl Config {
             }
         };
 
-        let heartbeat_interval_secs = match env::var("HEARTBEAT_INTERVAL") {
+        let poll_interval_secs = match env::var("POLL_INTERVAL_SECS") {
             Ok(raw) => raw
                 .parse::<u64>()
-                .map_err(|source| ConfigError::InvalidHeartbeatInterval {
+                .map_err(|source| ConfigError::InvalidPollIntervalSecs {
                     value: raw,
                     source,
                 })?,
             Err(_) => 2,
         };
 
+        let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+
         Ok(Self {
             controller_url,
             node_id,
-            heartbeat_interval_secs,
+            poll_interval_secs,
+            log_level,
         })
     }
 }

@@ -13,26 +13,26 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::from_env()?;
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(EnvFilter::try_new(&config.log_level)
+            .unwrap_or_else(|_| EnvFilter::new("info")))
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = Config::from_env()?;
     let state = AppState::new();
 
     let watcher_state = state.clone();
-    let watcher_interval = config.reassignment_interval;
-    let stale_timeout = config.stale_node_timeout;
+    let poll_interval = config.poll_interval;
+    let heartbeat_timeout = config.heartbeat_timeout;
 
     tokio::spawn(async move {
-        run_stale_node_watcher(watcher_state, watcher_interval, stale_timeout).await;
+        run_stale_node_watcher(watcher_state, poll_interval, heartbeat_timeout).await;
     });
 
-
     let app = build_router(state);
-    let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
-    tracing::info!(addr = %config.bind_addr, "homeedge-controller listening");
+    let listener = tokio::net::TcpListener::bind(config.bind_address).await?;
+    tracing::info!(addr = %config.bind_address, "homeedge-controller listening");
     axum::serve(listener, app).await?;
 
     Ok(())

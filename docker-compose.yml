@@ -11,7 +11,7 @@ services:
       - "8080:8080"
     environment:
       RUST_LOG: info
-      BIND_ADDR: 0.0.0.0:8080
+      BIND_ADDRESS: 0.0.0.0:8080
 
   agent-1:
     build:

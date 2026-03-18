@@ -1,10 +1,6 @@
 use std::collections::{HashMap, HashSet};
-use std::time::Duration;
-
-use tokio::time::{interval, MissedTickBehavior};
-
-use homeedge_types::service::{ServiceAssignment, ServiceDefinition, ServiceId};
-
+use tokio::time::MissedTickBehavior;
+use homeedge_types::service::{ServiceDefinition, ServiceId};
 use crate::{
     app_state::SharedAgentAppState,
     controller_client::ControllerClient,
@@ -12,7 +8,6 @@ use crate::{
     runtime::service_runtime::ServiceManager,
 };
 
-const RECONCILE_INTERVAL: Duration = Duration::from_secs(5);
 
 fn diff(
     desired: &HashSet<ServiceId>,
@@ -24,6 +19,7 @@ fn diff(
     to_stop.sort_by_key(|id| id.0);
     (to_start, to_stop)
 }
+
 
 pub async fn reconcile_once(
     client: &ControllerClient,
@@ -115,8 +111,9 @@ pub async fn reconcile_once(
 pub async fn run_reconcile_loop(
     client: ControllerClient,
     state: SharedAgentAppState,
+    interval_secs: u64,
 ) {
-    let mut ticker = interval(RECONCILE_INTERVAL);
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     let mut manager = ServiceManager::new();

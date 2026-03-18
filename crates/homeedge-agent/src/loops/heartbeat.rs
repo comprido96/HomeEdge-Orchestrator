@@ -1,18 +1,16 @@
-use std::time::Duration;
-
-use chrono::Utc;
-use tokio::time::{interval, MissedTickBehavior};
-
+use tokio::time::MissedTickBehavior;
 use crate::{
     app_state::SharedAgentAppState,
     controller_client::{ControllerClient, HeartbeatPayload},
 };
 
+
 pub async fn run_heartbeat_loop(
     client: ControllerClient,
     state: SharedAgentAppState,
+    interval_secs: u64,
 ) {
-    let mut ticker = interval(Duration::from_secs(5));
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(interval_secs));
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     loop {

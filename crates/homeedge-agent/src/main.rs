@@ -25,16 +25,20 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = Config::from_env()?;
+
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(
+            EnvFilter::try_new(&config.log_level)
+                .unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
-
-    let config = Config::from_env()?;
 
     tracing::info!(
         node_id = %config.node_id,
         controller = %config.controller_url,
+        poll_interval_secs = config.poll_interval_secs,
         "agent starting"
     );
 
@@ -51,14 +55,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let heartbeat_client = client.clone();
     let heartbeat_state = state.clone();
+    let heartbeat_interval_secs = config.poll_interval_secs;
     let heartbeat_task = tokio::spawn(async move {
-        run_heartbeat_loop(heartbeat_client, heartbeat_state).await;
+        run_heartbeat_loop(heartbeat_client, heartbeat_state, heartbeat_interval_secs).await;
     });
 
     let reconcile_client = client.clone();
     let reconcile_state = state.clone();
+    let reconcile_interval_secs = config.poll_interval_secs;
     let reconcile_task = tokio::spawn(async move {
-        run_reconcile_loop(reconcile_client, reconcile_state).await;
+        run_reconcile_loop(reconcile_client, reconcile_state, reconcile_interval_secs).await;
     });
 
     let _ = tokio::join!(heartbeat_task, reconcile_task);
