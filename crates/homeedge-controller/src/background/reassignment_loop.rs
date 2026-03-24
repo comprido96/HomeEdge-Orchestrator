@@ -16,6 +16,9 @@ pub fn reassign_from_offline_nodes(state: &mut ControllerState) -> Vec<ServiceId
 
     for offline_node_id in offline_node_ids {
         let orphaned = state.assignments.remove(&offline_node_id).unwrap_or_default();
+        
+        // Clear stale heartbeat-reported statuses from the offline node
+        state.observed.remove(&offline_node_id);
 
         for service_id in orphaned {
             let mut healthy_nodes: Vec<_> = state.nodes.values()
