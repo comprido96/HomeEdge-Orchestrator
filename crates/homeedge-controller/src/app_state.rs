@@ -177,7 +177,6 @@ impl ControllerState {
 
         self.services.remove(&service_id);
 
-        // cleanup assignments
         for services in self.assignments.values_mut() {
             services.retain(|id| *id != service_id);
         }
@@ -209,7 +208,6 @@ impl ControllerState {
         selector: Option<String>,
     ) -> Result<ServiceDefinition, AppError> {
 
-        // Validate inputs first — no borrows yet
         if name.trim().is_empty() {
             return Err(AppError::BadRequest("name must not be empty".into()));
         }
@@ -218,7 +216,6 @@ impl ControllerState {
             return Err(AppError::BadRequest("version must not be empty".into()));
         }
 
-        // Conflict check before mutable borrow
         if self.services.values().any(|s|
             s.id != service_id &&
             s.name == name &&
@@ -229,12 +226,10 @@ impl ControllerState {
             ));
         }
 
-        // Check existence before mutable borrow too
         if !self.services.contains_key(&service_id) {
             return Err(AppError::ServiceNotFound);
         }
 
-        // Now take the mutable borrow — nothing else borrows `self.services` below
         let service = self.services
             .get_mut(&service_id)
             .ok_or(AppError::ServiceNotFound)?;
