@@ -1,0 +1,65 @@
+services:
+  controller:
+    build:
+      context: .
+      dockerfile: Dockerfile.controller
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+
+      BIND_ADDRESS: 0.0.0.0:8080
+      HEARTBEAT_TIMEOUT_SECS: 30
+      POLL_INTERVAL_SECS: 5
+
+    healthcheck:
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+
+  agent-1: &agent-base
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+
+    environment:
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+
+      CONTROLLER_URL: http://controller:8080
+      POLL_INTERVAL_SECS: 2
+
+      NODE_ID: 00000000-0000-0000-0000-000000000001
+
+    depends_on:
+      - controller
+
+
+  agent-2:
+    <<: *agent-base
+
+    environment:
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+
+      CONTROLLER_URL: http://controller:8080
+      POLL_INTERVAL_SECS: 2
+
+      NODE_ID: 00000000-0000-0000-0000-000000000002
+
+
+  agent-3:
+    <<: *agent-base
+
+    environment:
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+
+      CONTROLLER_URL: http://controller:8080
+      POLL_INTERVAL_SECS: 2
+
+      NODE_ID: 00000000-0000-0000-0000-000000000003

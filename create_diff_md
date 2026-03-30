@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+echo '```diff' > diff.md
+git diff <commit1> <commit2> >> diff.md
+echo '```' >> diff.md
