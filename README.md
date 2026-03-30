@@ -20,72 +20,142 @@ The system is composed of two binaries:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                   VPS (Controller)              │
-│                                                 │
-│   POST /register       ┌──────────────────┐    │
-│   POST /heartbeat  ──▶ │  In-Memory State │    │
-│   GET  /assignments    │  Node Registry   │    │
-│   GET  /nodes          │  Service Assign. │    │
-│                        └──────────────────┘    │
-│              Failure Detection & Reassignment   │
-└────────────────────────┬────────────────────────┘
-                         │ VPN (Headscale)
-          ┌──────────────┼──────────────┐
-          │              │              │
-   ┌──────▼──────┐ ┌─────▼──────┐ ┌───▼────────┐
-   │  Node Agent │ │ Node Agent │ │ Node Agent │
-   │   (edge-1)  │ │  (edge-2)  │ │  (edge-3)  │
-   └─────────────┘ └────────────┘ └────────────┘
+┌─────────────────────────────────────────────┐
+│                  Controller                 │
+│                                             │
+│               REST API                      │
+│               Node registry                 │
+│               Assignment engine             │
+│               Failure detection             │
+│               Reassignment loop             │
+│                                             │
+└───────────────┬─────────────────────────────┘
+                │ HTTP
+        ┌───────┼────────┬────────┐
+        │       │        │        │
+   ┌────▼───┐ ┌─▼────┐ ┌─▼────┐ ┌─▼────┐
+   │ Agent  │ │Agent │ │Agent │ │Agent │
+   │ node-1 │ │node-2│ │node-3│ │ ...  │
+   └────────┘ └──────┘ └──────┘ └──────┘
 ```
+
+Each agent runs:
+- Registration loop
+- Heartbeat loop
+- Reconciliation loop
+- Service runtime (Tokio tasks)
 
 ---
 
 ## Features
 
-- **Node Registration** — Agents self-register with the controller on startup
-- **Heartbeat Monitoring** — Periodic liveness signals with configurable timeout detection
-- **Service Assignment** — Controller distributes named, versioned services to nodes based on selectors
-- **Failure Detection** — Stale/offline nodes are automatically identified
-- **Automatic Reassignment** — Services are redistributed to healthy nodes on failure
-- **Service Lifecycle Simulation** — Agents track service states: `assigned → starting → running → failed`
-- **Async Throughout** — Built on Tokio; non-blocking I/O across all components
+### Implemented
+
+- **Node registration** — Agents register on startup via `POST /register`
+- **Heartbeat monitoring** — Agents send periodic health reports; controller detects stale nodes
+- **Desired state reconciliation** — Agents continuously compare desired services (controller) vs. running services (local)
+- **Service assignment** — Controller assigns services to healthy nodes; agents pick them up via polling
+- **Failure detection** — Nodes marked offline after heartbeat timeout
+- **Automatic reassignment** — Services automatically migrate from failed nodes
+- **Service lifecycle simulation** — Services run as Tokio tasks inside the agent
+- **Integration tests** — Controller API tests and end-to-end orchestration flow tests
+
+### Deferred (post-demo scope)
+
+- SQLite persistence
+- Metrics
+- Worker process runtime
+- Capability selectors
+- Advanced scheduling
 
 ---
 
 ## Tech Stack
 
-- **[Rust](https://www.rust-lang.org/)** — Systems language powering both components
-- **[Tokio](https://tokio.rs/)** — Async runtime
-- **[Axum](https://github.com/tokio-rs/axum)** — HTTP server framework for the controller
-- **[Reqwest](https://github.com/seanmonstar/reqwest)** — Async HTTP client for node agents
-- **[Docker](https://www.docker.com/)** — Multi-node simulation environment
+| Tool | Purpose |
+|------|---------|
+| **Rust** | Core language |
+| **Tokio** | Async runtime |
+| **Axum** | Controller HTTP server |
+| **Reqwest** | Agent HTTP client |
+| **Serde** | Serialization |
+| **Tracing** | Structured logging |
+| **Docker** | Multi-node simulation |
 
 ---
 
 ## Project Structure
 
 ```
-homeedge-orchestrator/
-├── Cargo.toml              # Workspace manifest
-├── controller/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs
-│       ├── routes/         # API endpoint handlers
-│       ├── state/          # Node registry and service assignments
-│       └── scheduler/      # Failure detection and reassignment logic
-├── agent/
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs
-│       ├── client/         # Controller API client
-│       └── runtime/        # Local service lifecycle management
-└── docker/
-    ├── docker-compose.yml
-    ├── Dockerfile.controller
-    └── Dockerfile.agent
+.
+├── Cargo.toml
+├── crates
+│   ├── homeedge-agent
+│   │   ├── loops/                  # registration, heartbeat, reconciliation
+│   │   ├── runtime/                # service lifecycle simulation
+│   │   ├── controller_client.rs
+│   │   └── app_state.rs
+│   │
+│   ├── homeedge-controller
+│   │   ├── handlers/               # REST endpoints
+│   │   ├── domain/                 # assignment + node logic
+│   │   ├── background/             # failure detection + reassignment
+│   │   ├── repository/             # in-memory state
+│   │   └── router.rs
+│   │
+│   ├── homeedge-types
+│   │   ├── node.rs                 # Node domain types
+│   │   ├── service.rs              # Service domain types
+│   │   └── api.rs                  # API contracts
+│   │
+│   ├── homeedge-test-utils
+│   │   └── test helpers
+│   │
+│   ├── homeedge-integration-tests
+│   │   └── end-to-end tests
+│   │
+│   └── homeedge-worker             # reserved for future service runtime
+│
+├── docker-compose.yml
+├── Dockerfile.controller
+├── Dockerfile.agent
+│
+├── scripts
+│   ├── dev-up                      # start demo environment
+│   ├── dev-reset                   # clean environment
+│   ├── demo-assign-service         # helper script
+│   └── demo-fail-node              # failure simulation
+│
+└── docs
+    └── demo-script.md
 ```
+
+---
+
+## System Flow
+
+### Startup
+
+1. Controller starts HTTP server
+2. Agents start and register
+3. Agents begin heartbeats
+4. Agents start reconciliation loops
+
+### Service Creation
+
+1. Service created via API
+2. Controller assigns to a node
+3. Agent detects assignment
+4. Agent spawns Tokio service task
+5. Agent reports service health
+
+### Failure Recovery
+
+1. Agent stops heartbeating
+2. Controller marks node offline
+3. Services reassigned
+4. New agent starts service
+5. System stabilizes
 
 ---
 
@@ -93,88 +163,143 @@ homeedge-orchestrator/
 
 ### Prerequisites
 
-- Rust (stable) — [Install via rustup](https://rustup.rs/)
-- Docker & Docker Compose
+- Rust stable
+- Docker
+- Docker Compose
+- `jq` (optional, for API inspection)
 
 ### Build
 
 ```bash
-git clone https://github.com/your-username/homeedge-orchestrator
-cd homeedge-orchestrator
 cargo build --workspace
 ```
 
-### Run Locally (without Docker)
+### Run Locally (Development)
 
 Start the controller:
-```bash
-cargo run -p controller
-```
-
-Start a node agent in a separate terminal:
-```bash
-NODE_ID=edge-1 cargo run -p agent
-```
-
-### Run the Full Demo (Docker)
 
 ```bash
-docker compose -f docker/docker-compose.yml up
+cargo run -p homeedge-controller
 ```
 
-This spins up one controller and three node agents. Watch the logs to observe registration, assignment, and heartbeat activity.
+Start an agent:
 
----
+```bash
+cargo run -p homeedge-agent
+```
 
-## API Reference
+### Run the Full Demo
 
-### Controller Endpoints
+Recommended method:
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/register` | Register a new node agent |
-| `POST` | `/heartbeat` | Receive a heartbeat from a node |
-| `GET` | `/assignments/{node_id}` | Fetch service assignments for a node |
-| `GET` | `/nodes` | List all known nodes and their status |
+```bash
+./scripts/dev-up
+```
+
+Alternative:
+
+```bash
+docker compose up --build
+```
+
+This starts 1 controller and 3 agents.
 
 ---
 
 ## Demo Scenario
 
-The final demo runs a Docker environment with **one controller** and **three node agents** and demonstrates the full orchestration lifecycle:
+### Step 1 — Start System
 
-1. All three nodes register with the controller
-2. Services are assigned to nodes
-3. Heartbeat monitoring begins
-4. One node container is terminated (simulated failure)
-5. Controller detects the missed heartbeats and marks the node offline
-6. Services from the failed node are automatically reassigned to healthy nodes
+```bash
+./scripts/dev-up
+```
+
+Agents register and begin heartbeating. Verify:
+
+```bash
+curl http://127.0.0.1:8080/nodes | jq
+```
+
+### Step 2 — Create Service
+
+```bash
+./scripts/demo-assign-service
+```
+
+Controller assigns the service to a node. Agent detects the assignment and starts the service.
+
+### Step 3 — Simulate Failure
+
+```bash
+./scripts/demo-fail-node
+```
+
+Controller detects failure after heartbeat timeout. Service is reassigned automatically.
+
+### Step 4 — Observe Recovery
+
+A healthy node starts the reassigned service and the system returns to stable state.
+
+### Step 5 — Cleanup
+
+```bash
+./scripts/dev-reset
+```
 
 ---
 
-## Roadmap
+## API Reference
 
-- [x] Controller HTTP API (register, heartbeat, assignments, nodes)
-- [x] Node agent (registration, heartbeats, assignment polling, reconciliation)
-- [x] Service assignment model with health status tracking
-- [x] Heartbeat timeout and failure detection
-- [x] Automatic service reassignment
-- [x] Multi-node Docker simulation
-- [ ] SQLite persistence for controller state
-- [ ] Structured tracing and metrics (OpenTelemetry / `tracing` crate)
-
----
-
-## Key Concepts Demonstrated
-
-- **Control plane / data plane separation** — Controller manages desired state; agents enforce it locally
-- **State reconciliation** — Agents continuously compare desired vs. actual service state
-- **Failure detection** — Heartbeat timeouts drive node health transitions
-- **Async Rust** — Tokio tasks, channels, and timers coordinate concurrent workloads
-- **Workspace architecture** — Shared types and clean separation between crates
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/register` | Register node |
+| `POST` | `/heartbeat` | Receive heartbeat |
+| `GET` | `/assignments/{node_id}` | Get node assignments |
+| `GET` | `/nodes` | List nodes |
+| `POST` | `/services` | Create service |
+| `GET` | `/services` | List services |
 
 ---
+
+## Key Concepts
+
+### Control Plane / Data Plane Separation
+
+The controller defines desired state; agents enforce it.
+
+### Reconciliation Loops
+
+Agents continuously execute:
+
+```
+poll → diff → act → report
+```
+
+This guarantees convergence even after failures.
+
+### Failure Detection
+
+Nodes transition from `Healthy → Offline` based on heartbeat timeout.
+
+### Automatic Failover
+
+Service reassignment happens automatically when nodes fail.
+
+### Async Rust Architecture
+
+The project demonstrates Tokio tasks, async HTTP, concurrent loops, structured logging, and workspace modularity.
 
 ## License
 
-MIT
+This project is licensed under the [Business Source License 1.1](LICENSE.md) (BSL).
+
+Free for:
+- Personal use
+- Research
+- Internal company use
+
+Commercial redistribution or SaaS requires a commercial license.
+
+**Contact:** your@email
+
+After 4 years, the code converts to [Apache 2.0](http://www.apache.org/licenses/LICENSE-2.0).

@@ -4,6 +4,9 @@ use homeedge_types::NodeId;
 use thiserror::Error;
 use uuid::Uuid;
 
+
+pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 2;
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("invalid NODE_ID '{value}': {source}")]
@@ -58,7 +61,7 @@ impl Config {
                     value: raw,
                     source,
                 })?,
-            Err(_) => 2,
+            Err(_) => DEFAULT_POLL_INTERVAL_SECS,
         };
 
         let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());

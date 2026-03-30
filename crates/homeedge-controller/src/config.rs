@@ -4,6 +4,9 @@ use std::time::Duration;
 use thiserror::Error;
 
 
+pub const DEFAULT_BIND_ADDRESS: &'static str = "0.0.0.0:8080";
+
+
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("invalid BIND_ADDRESS '{value}': {source}")]
@@ -41,7 +44,7 @@ pub struct Config {
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
         let bind_address_raw =
-            env::var("BIND_ADDRESS").unwrap_or_else(|_| "0.0.0.0:8080".to_string());
+            env::var("BIND_ADDRESS").unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_string());
 
         let bind_address = bind_address_raw
             .parse()
