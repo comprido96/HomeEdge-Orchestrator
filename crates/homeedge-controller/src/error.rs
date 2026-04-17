@@ -6,13 +6,13 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::repository::RepositoryError;
 
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
     pub error: String,
     pub message: String,
 }
-
 
 #[derive(Debug, Error)]
 pub enum AppError {
@@ -30,6 +30,9 @@ pub enum AppError {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("repository error: {0}")]
+    Repository(#[from] RepositoryError),
 }
 
 impl AppError {
@@ -38,7 +41,7 @@ impl AppError {
             Self::NodeNotFound | Self::ServiceNotFound => StatusCode::NOT_FOUND,
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Conflict(_) => StatusCode::CONFLICT,
-            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::Internal(_) | Self::Repository(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -49,6 +52,7 @@ impl AppError {
             Self::BadRequest(_) => "bad_request",
             Self::Conflict(_) => "conflict",
             Self::Internal(_) => "internal_error",
+            Self::Repository(_) => "repository_error",
         }
     }
 }

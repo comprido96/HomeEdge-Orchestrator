@@ -1,9 +1,11 @@
 use axum::{
-    Json, extract::{Path, State}, http::StatusCode
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
 };
-use crate::{app_state::AppState, error::AppError};
-use homeedge_types::{ServiceAssignment, ServiceId, api::AssignServiceRequest, node::NodeId};
 
+use crate::{app_state::AppState, error::AppError};
+use homeedge_types::{api::AssignServiceRequest, node::NodeId, ServiceAssignment, ServiceId};
 
 pub async fn get_assignments(
     State(state): State<AppState>,
@@ -14,26 +16,19 @@ pub async fn get_assignments(
     Ok(Json(assignments))
 }
 
-
 pub async fn list_assignments(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ServiceAssignment>>, AppError> {
-
     let guard = state.inner.lock().await;
-
     Ok(Json(guard.list_assignments()))
 }
-
 
 pub async fn assign_service(
     State(state): State<AppState>,
     Path(service_id): Path<ServiceId>,
     Json(req): Json<AssignServiceRequest>,
 ) -> Result<Json<ServiceAssignment>, AppError> {
-
-    let mut guard = state.inner.lock().await;
-
-    let assignment = guard.assign_service(service_id, req.node_id)?;
+    let assignment = state.assign_service(service_id, req.node_id).await?;
 
     tracing::info!(
         node_id = %req.node_id,
@@ -45,15 +40,11 @@ pub async fn assign_service(
     Ok(Json(assignment))
 }
 
-
 pub async fn unassign_service(
     State(state): State<AppState>,
     Path(service_id): Path<ServiceId>,
 ) -> Result<StatusCode, AppError> {
-
-    let mut guard = state.inner.lock().await;
-
-    guard.unassign_service(service_id)?;
+    state.unassign_service(service_id).await?;
 
     tracing::info!(
         service_id = %service_id,
@@ -64,17 +55,13 @@ pub async fn unassign_service(
     Ok(StatusCode::NO_CONTENT)
 }
 
-
 pub async fn get_assignments_for_node(
     State(state): State<AppState>,
     Path(node_id): Path<NodeId>,
 ) -> Result<Json<Vec<ServiceAssignment>>, AppError> {
-
     let guard = state.inner.lock().await;
-
     Ok(Json(guard.assignments_for(node_id)?))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -82,17 +69,21 @@ mod tests {
         body::Body,
         http::{Request, StatusCode},
     };
-    use tower::ServiceExt;
     use std::sync::Arc;
     use tokio::sync::Mutex;
+    use tower::ServiceExt;
 
-    use homeedge_types::{AssignmentsResponse, NodeId, NodeRecord, NodeStatus, ServiceAssignment, ServiceDefinition};
+    use homeedge_types::{NodeId, NodeRecord, NodeStatus, ServiceAssignment, ServiceDefinition};
 
-    use crate::{app_state::{AppState, ControllerState}, router::build_router};
+    use crate::{
+        app_state::{AppState, ControllerState, StorageMode},
+        router::build_router,
+    };
 
     fn test_state() -> AppState {
         AppState {
             inner: Arc::new(Mutex::new(ControllerState::default())),
+            storage: StorageMode::InMemory,
         }
     }
 
@@ -113,6 +104,7 @@ mod tests {
 
         let app = build_router(AppState {
             inner: std::sync::Arc::new(tokio::sync::Mutex::new(controller_state)),
+            storage: StorageMode::InMemory,
         });
 
         let req = Request::builder()
@@ -147,6 +139,7 @@ mod tests {
 
         let app = build_router(AppState {
             inner: std::sync::Arc::new(tokio::sync::Mutex::new(controller_state)),
+            storage: StorageMode::InMemory,
         });
 
         let req = Request::builder()

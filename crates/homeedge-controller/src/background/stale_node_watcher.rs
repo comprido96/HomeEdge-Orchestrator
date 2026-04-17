@@ -7,14 +7,14 @@ use crate::{app_state::AppState, background::reassignment_loop::reassign_from_of
 use homeedge_types::{NodeId, NodeRecord, NodeStatus};
 
 
-fn mark_stale_nodes(
-    nodes: &mut HashMap<NodeId, NodeRecord>,
+fn stale_node_ids(
+    nodes: &HashMap<NodeId, NodeRecord>,
     now: DateTime<Utc>,
     heartbeat_timeout: Duration,
-) -> bool {
-    let mut any_new_offline = false;
+) -> Vec<NodeId> {
+    let mut stale = Vec::new();
 
-    for node in nodes.values_mut() {
+    for node in nodes.values() {
         let is_stale = match node.last_heartbeat {
             Some(last_heartbeat) => {
                 let elapsed = now
@@ -28,20 +28,11 @@ fn mark_stale_nodes(
         };
 
         if is_stale && node.status != NodeStatus::Offline {
-            let previous_status = node.status;
-            node.status = NodeStatus::Offline;
-            any_new_offline = true;
-
-            tracing::warn!(
-                node_id = %node.id,
-                from = ?previous_status,
-                to = ?NodeStatus::Offline,
-                "node status changed"
-            );
+            stale.push(node.id);
         }
     }
 
-    any_new_offline
+    stale
 }
 
 
@@ -57,12 +48,46 @@ pub async fn run_stale_node_watcher(
         ticker.tick().await;
 
         let now = Utc::now();
-        let mut guard = state.inner.lock().await;
 
-        let any_new_offline = mark_stale_nodes(&mut guard.nodes, now, heartbeat_timeout);
+        let stale_ids = {
+            let guard = state.inner.lock().await;
+            stale_node_ids(&guard.nodes, now, heartbeat_timeout)
+        };
 
-        if any_new_offline {
-            let _unscheduled = reassign_from_offline_nodes(&mut guard);
+        if stale_ids.is_empty() {
+            continue;
+        }
+
+        for node_id in stale_ids {
+            let previous_status = {
+                let guard = state.inner.lock().await;
+                guard.nodes.get(&node_id).map(|n| n.status)
+            };
+
+            if let Some(previous_status) = previous_status {
+                if let Err(err) = state.mark_node_offline(node_id).await {
+                    tracing::error!(
+                        node_id = %node_id,
+                        error = %err,
+                        "failed to persist offline node transition"
+                    );
+                    continue;
+                }
+
+                tracing::warn!(
+                    node_id = %node_id,
+                    from = ?previous_status,
+                    to = ?NodeStatus::Offline,
+                    "node status changed"
+                );
+            }
+        }
+
+        if let Err(err) = state.reassign_from_offline_nodes().await {
+            tracing::error!(
+                error = %err,
+                "failed to persist reassignment after offline detection"
+            );
         }
     }
 }
@@ -77,22 +102,22 @@ mod tests {
     use uuid::Uuid;
 
     use homeedge_types::{
-        NodeStatus,
         node::{NodeId, NodeRecord},
+        NodeStatus,
     };
 
-    use super::mark_stale_nodes;
+    use super::stale_node_ids;
 
     fn node_id(n: u128) -> NodeId {
         NodeId(Uuid::from_u128(n))
     }
 
     #[test]
-    fn mark_stale_nodes_marks_old_heartbeat_offline() {
+    fn stale_node_ids_returns_old_heartbeat_node() {
         let now = Utc::now();
         let id = node_id(1);
 
-        let mut nodes = HashMap::from([(
+        let nodes = HashMap::from([(
             id,
             NodeRecord {
                 id,
@@ -102,17 +127,17 @@ mod tests {
             },
         )]);
 
-        mark_stale_nodes(&mut nodes, now, Duration::from_secs(30));
+        let stale = stale_node_ids(&nodes, now, Duration::from_secs(30));
 
-        assert_eq!(nodes.get(&id).unwrap().status, NodeStatus::Offline);
+        assert_eq!(stale, vec![id]);
     }
 
     #[test]
-    fn mark_stale_nodes_keeps_recent_heartbeat_healthy() {
+    fn stale_node_ids_ignores_recent_heartbeat() {
         let now = Utc::now();
         let id = node_id(2);
 
-        let mut nodes = HashMap::from([(
+        let nodes = HashMap::from([(
             id,
             NodeRecord {
                 id,
@@ -122,17 +147,17 @@ mod tests {
             },
         )]);
 
-        mark_stale_nodes(&mut nodes, now, Duration::from_secs(30));
+        let stale = stale_node_ids(&nodes, now, Duration::from_secs(30));
 
-        assert_eq!(nodes.get(&id).unwrap().status, NodeStatus::Healthy);
+        assert!(stale.is_empty());
     }
 
     #[test]
-    fn mark_stale_nodes_does_not_change_already_offline_node() {
+    fn stale_node_ids_ignores_already_offline_node() {
         let now = Utc::now();
         let id = node_id(3);
 
-        let mut nodes = HashMap::from([(
+        let nodes = HashMap::from([(
             id,
             NodeRecord {
                 id,
@@ -142,47 +167,8 @@ mod tests {
             },
         )]);
 
-        mark_stale_nodes(&mut nodes, now, Duration::from_secs(30));
-        assert_eq!(nodes.get(&id).unwrap().status, NodeStatus::Offline);
-    }
+        let stale = stale_node_ids(&nodes, now, Duration::from_secs(30));
 
-    #[test]
-    fn mark_stale_nodes_marks_healthy_node_offline_when_heartbeat_is_old() {
-        let now = Utc::now();
-        let id = node_id(1);
-
-        let mut nodes = HashMap::from([(
-            id,
-            NodeRecord {
-                id,
-                status: NodeStatus::Healthy,
-                last_heartbeat: Some(now - chrono::Duration::seconds(31)),
-                capabilities: vec!["docker".into()],
-            },
-        )]);
-
-        mark_stale_nodes(&mut nodes, now, Duration::from_secs(30));
-
-        assert_eq!(nodes.get(&id).unwrap().status, NodeStatus::Offline);
-    }
-
-    #[test]
-    fn mark_stale_nodes_leaves_offline_node_offline() {
-        let now = Utc::now();
-        let id = node_id(2);
-
-        let mut nodes = HashMap::from([(
-            id,
-            NodeRecord {
-                id,
-                status: NodeStatus::Offline,
-                last_heartbeat: Some(now - chrono::Duration::seconds(31)),
-                capabilities: vec!["docker".into()],
-            },
-        )]);
-
-        mark_stale_nodes(&mut nodes, now, Duration::from_secs(30));
-
-        assert_eq!(nodes.get(&id).unwrap().status, NodeStatus::Offline);
+        assert!(stale.is_empty());
     }
 }

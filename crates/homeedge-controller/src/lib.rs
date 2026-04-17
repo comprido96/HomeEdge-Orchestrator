@@ -5,4 +5,5 @@ pub mod domain;
 pub mod error;
 pub mod handlers;
 pub mod observability;
+pub mod repository;
 pub mod router;

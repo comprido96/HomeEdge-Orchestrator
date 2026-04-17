@@ -7,7 +7,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-use homeedge_controller::app_state::AppState;
+use homeedge_controller::app_state::{AppState, StorageMode};
 use homeedge_controller::router::build_router;
 use homeedge_types::{ServiceAssignment, api::{
     AssignmentsResponse, HeartbeatRequest, HeartbeatResponse, NodesResponse, RegisterRequest,
@@ -21,7 +21,7 @@ fn node_id(n: u128) -> NodeId {
 
 #[tokio::test]
 async fn post_register_creates_node() {
-    let state = AppState::new();
+    let state = AppState::new(StorageMode::InMemory);
     let app = build_router(state);
 
     let req_body = serde_json::to_vec(&RegisterRequest {
@@ -52,7 +52,7 @@ async fn post_register_creates_node() {
 
 #[tokio::test]
 async fn post_heartbeat_marks_registered_node_healthy() {
-    let state = AppState::new();
+    let state = AppState::new(StorageMode::InMemory);
     let app = build_router(state.clone());
 
     let register_body = serde_json::to_vec(&RegisterRequest {
@@ -102,7 +102,7 @@ async fn post_heartbeat_marks_registered_node_healthy() {
 
 #[tokio::test]
 async fn post_heartbeat_for_unknown_node_returns_404() {
-    let state = AppState::new();
+    let state = AppState::new(StorageMode::InMemory);
     let app = build_router(state);
 
     let heartbeat_body = serde_json::to_vec(&HeartbeatRequest {
@@ -127,7 +127,7 @@ async fn post_heartbeat_for_unknown_node_returns_404() {
 
 #[tokio::test]
 async fn get_assignments_for_registered_node_returns_empty_list() {
-    let state = AppState::new();
+    let state = AppState::new(StorageMode::InMemory);
     let app = build_router(state.clone());
 
     let register_body = serde_json::to_vec(&RegisterRequest {
@@ -165,7 +165,7 @@ async fn get_assignments_for_registered_node_returns_empty_list() {
 
 #[tokio::test]
 async fn get_assignments_for_unknown_node_returns_404() {
-    let state = AppState::new();
+    let state = AppState::new(StorageMode::InMemory);
     let app = build_router(state);
 
     let response = app
@@ -182,7 +182,7 @@ async fn get_assignments_for_unknown_node_returns_404() {
 
 #[tokio::test]
 async fn get_nodes_returns_registered_nodes() {
-    let state = AppState::new();
+    let state = AppState::new(StorageMode::InMemory);
     let app = build_router(state.clone());
 
     for (id, capability) in [(10_u128, "docker"), (20_u128, "mqtt")] {

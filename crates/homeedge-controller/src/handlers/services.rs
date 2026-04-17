@@ -1,72 +1,29 @@
 use axum::{
-    Json, extract::{Path, State}, http::StatusCode
+    extract::{Path, State},
+    http::StatusCode,
+    Json,
 };
 use homeedge_types::{
-    ServiceId, api::{CreateServiceRequest, CreateServiceResponse, ListServicesResponse, UpdateServiceRequest}, service::ServiceDefinition
-};
-use crate::{
-    app_state::AppState,
-    domain::assignment_engine::assign_unassigned_services,
-    error::AppError,
+    api::{CreateServiceRequest, CreateServiceResponse, ListServicesResponse, UpdateServiceRequest},
+    service::ServiceDefinition,
+    ServiceId,
 };
 
+use crate::{app_state::AppState, error::AppError};
 
 pub async fn create_service(
     State(state): State<AppState>,
     Json(req): Json<CreateServiceRequest>,
 ) -> Result<(StatusCode, Json<CreateServiceResponse>), AppError> {
-    let name = req.name.trim().to_string();
-    let version = req.version.trim().to_string();
+    let service = state.create_service(req).await?;
 
-    if name.is_empty() {
-        return Err(AppError::BadRequest("name must not be empty".to_string()));
-    }
-
-    if version.is_empty() {
-        return Err(AppError::BadRequest("version must not be empty".to_string()));
-    }
-
-    let mut service = ServiceDefinition::new(name, version);
-    service.selector = req.selector.map(|s| s.trim().to_string());
-
-    let service = {
-        let mut guard: tokio::sync::MutexGuard<'_, crate::app_state::ControllerState> = state.inner.lock().await;
-
-        if guard
-            .services
-            .values()
-            .any(|s| s.name == service.name && s.version == service.version)
-        {
-            return Err(AppError::Conflict(format!(
-                "service '{}' version '{}' already exists",
-                service.name, service.version
-            )));
-        }
-        guard.services.insert(service.id, service.clone());
-
-        let nodes = guard.nodes.clone();
-        let services = guard.services.clone();
-
-        assign_unassigned_services(
-            &nodes,
-            &services,
-            &mut guard.assignments,
-        );
-
-        service
-    };
-
-    Ok((
-        StatusCode::CREATED,
-        Json(CreateServiceResponse { service }),
-    ))
+    Ok((StatusCode::CREATED, Json(CreateServiceResponse { service })))
 }
-
 
 pub async fn list_services(
     State(state): State<AppState>,
 ) -> Result<Json<ListServicesResponse>, AppError> {
-    let guard: tokio::sync::MutexGuard<'_, crate::app_state::ControllerState> = state.inner.lock().await;
+    let guard = state.inner.lock().await;
 
     let mut services: Vec<ServiceDefinition> =
         guard.services.values().cloned().collect();
@@ -81,48 +38,29 @@ pub async fn list_services(
     Ok(Json(ListServicesResponse { services }))
 }
 
-
 pub async fn get_service(
     State(state): State<AppState>,
     Path(service_id): Path<ServiceId>,
 ) -> Result<Json<ServiceDefinition>, AppError> {
-
     let guard = state.inner.lock().await;
-
     let service = guard.get_service(service_id)?;
-
     Ok(Json(service))
 }
-
 
 pub async fn delete_service(
     State(state): State<AppState>,
     Path(service_id): Path<ServiceId>,
 ) -> Result<StatusCode, AppError> {
-
-    let mut guard = state.inner.lock().await;
-
-    guard.delete_service(service_id)?;
-
+    state.delete_service(service_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
-
 
 pub async fn update_service(
     State(state): State<AppState>,
     Path(service_id): Path<ServiceId>,
     Json(req): Json<UpdateServiceRequest>,
 ) -> Result<Json<ServiceDefinition>, AppError> {
-
-    let mut guard = state.inner.lock().await;
-
-    let updated = guard.update_service(
-        service_id,
-        req.name.trim().to_string(),
-        req.version.trim().to_string(),
-        req.selector.map(|s| s.trim().to_string()),
-    )?;
-
+    let updated = state.update_service(service_id, req).await?;
     Ok(Json(updated))
 }
 
@@ -141,7 +79,7 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::{
-        app_state::{AppState, ControllerState},
+        app_state::{AppState, ControllerState, StorageMode},
         router::build_router,
     };
 
@@ -151,6 +89,7 @@ mod tests {
     fn test_state() -> AppState {
         AppState {
             inner: Arc::new(Mutex::new(ControllerState::default())),
+            storage: StorageMode::InMemory,
         }
     }
 
